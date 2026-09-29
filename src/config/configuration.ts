@@ -3,7 +3,7 @@ export default () => ({
   nodeEnv: process.env.NODE_ENV || 'development',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   mongodb: {
-    uri: process.env.MONGODB_URI,
+    uri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/codescribe',
   },
   jwt: {
     secret: process.env.JWT_SECRET || 'fallback_secret_change_me',
