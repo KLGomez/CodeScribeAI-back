@@ -8,6 +8,7 @@ import { AiGatewayService } from '../ai-gateway/ai-gateway.service';
 import { DocumentationService } from '../documentation/documentation.service';
 import { UsersService } from '../users/users.service';
 import { decryptToken } from '../../common/utils/crypto.util';
+import { Types } from 'mongoose';
 
 interface AnalysisJobData {
   jobId: string;
@@ -49,8 +50,8 @@ export class JobsProcessor extends WorkerHost {
       });
 
       const doc = await this.documentationService.create({
-        userId: (user as any)._id,
-        jobId: jobId as any,
+        userId: new Types.ObjectId(userId),
+        jobId: new Types.ObjectId(jobId),
         repoUrl,
         content: result.markdown,
         sections: result.sections,

@@ -1,26 +1,80 @@
-import { Controller, Get, Delete, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Param,
+  Body,
+  UseGuards,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { DocumentationService } from './documentation.service';
 import { UserDocument } from '../users/schemas/user.schema';
+import { Documentation } from './schemas/documentation.schema';
 
-@Controller('documentation')
+@Controller(['documentation', 'docs'])
 @UseGuards(JwtAuthGuard)
 export class DocumentationController {
   constructor(private docService: DocumentationService) {}
 
+  /**
+   * GET /docs o GET /documentation
+   * Filtra obligatoriamente los resultados buscando solo los documentos
+   * donde userId coincide con el del usuario autenticado en el token JWT.
+   */
   @Get()
   findAll(@CurrentUser() user: UserDocument) {
-    return this.docService.findByUser((user as any)._id.toString());
+    if (!user || !(user as any)._id) {
+      throw new UnauthorizedException('Token de autenticación inválido o ausente');
+    }
+    const userId = (user as any)._id.toString();
+    return this.docService.findByUser(userId);
   }
 
+  /**
+   * GET /docs/:id o GET /documentation/:id
+   * Obtiene un documento verificando que pertenezca al usuario del token.
+   */
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: UserDocument) {
-    return this.docService.findById(id, (user as any)._id.toString());
+    if (!user || !(user as any)._id) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+    const userId = (user as any)._id.toString();
+    return this.docService.findById(id, userId);
   }
 
+  /**
+   * POST /docs o POST /documentation
+   * Extrae el userId del token JWT y lo asigna obligatoriamente al guardar.
+   */
+  @Post()
+  create(
+    @Body() createDto: Partial<Documentation>,
+    @CurrentUser() user: UserDocument,
+  ) {
+    if (!user || !(user as any)._id) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+    const userId = (user as any)._id;
+    return this.docService.create({
+      ...createDto,
+      userId,
+    });
+  }
+
+  /**
+   * DELETE /docs/:id o DELETE /documentation/:id
+   * Endpoint de eliminación física definitiva con verificación estricta de pertenencia (403 Forbidden).
+   */
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: UserDocument) {
-    return this.docService.delete(id, (user as any)._id.toString());
+    if (!user || !(user as any)._id) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+    const userId = (user as any)._id.toString();
+    return this.docService.delete(id, userId);
   }
 }
