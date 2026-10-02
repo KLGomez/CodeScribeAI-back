@@ -1,124 +1,140 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# CodeScribe AI — Backend Service
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+> **Microservicio Backend y Motor de Orquestación de Tareas desarrollado con NestJS 12, TypeScript, BullMQ, Redis y MongoDB.**
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## 🚀 Descripción del Proyecto
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+El **Backend de CodeScribe AI** gestiona el ciclo de vida completo de análisis y documentación de repositorios:
+- **Autenticación con GitHub OAuth & Modo Demo:** Gestión de sesiones seguras mediante JWT y almacenamiento de tokens de GitHub cifrados con AES-256-CBC.
+- **Encolamiento Asíncrono con BullMQ y Redis:** Procesamiento en segundo plano de tareas pesadas de inspección y llamadas a LLMs sin bloquear la API REST.
+- **Streaming en Tiempo Real con Server-Sent Events (SSE):** Notificación continua del progreso del análisis hacia el cliente cada 2 segundos.
+- **Integración Segura con el Servicio de IA:** Comunicación HTTP resiliente con reintentos y retroceso exponencial hacia `documentador-ai-service`.
+- **Persistencia en MongoDB con Mongoose 9:** Modelos tipados para usuarios, repositorios, tareas (`jobs`) y documentos generados.
 
-## Project setup
+---
 
-```bash
-$ npm install
+## 🛠️ Stack Tecnológico
+
+- **Framework:** [NestJS](https://nestjs.com/) v12.0
+- **Runtime:** Node.js (v20+) con TypeScript
+- **Base de Datos NoSQL:** MongoDB 7.0 + Mongoose 9.10
+- **Cola de Mensajes & Caché:** Redis 7.0 + BullMQ 6.3 + ioredis 6.0
+- **Seguridad & Autenticación:** Passport.js (`passport-github2`, `passport-jwt`), Helmet, `@nestjs/throttler`, crypto nativo (AES-256)
+- **Pruebas y Linting:** Vitest 4.1, Supertest, Oxlint
+
+---
+
+## 📁 Estructura del Código Fuente
+
+```text
+src/
+├── common/             # Filtros de excepción, guardias JWT, decoradores y cifrado AES-256
+├── config/             # Configuración centralizada de variables de entorno
+├── database/           # Módulo de conexión a MongoDB
+├── modules/
+│   ├── ai-gateway/     # Cliente HTTP con reintentos hacia documentador-ai-service
+│   ├── auth/           # OAuth de GitHub, Modo Demo y emisión de JWT
+│   ├── documentation/  # Controlador y servicio de consulta y eliminación de documentos
+│   ├── jobs/           # Procesador BullMQ y endpoint SSE de streaming en tiempo real
+│   ├── repository/     # Registro y validación de repositorios de GitHub
+│   └── users/          # Gestión de perfiles y credenciales de usuario
+└── main.ts             # Arranque de la aplicación, configuración de CORS, Helmet y Pipes
 ```
 
-## Compile and run the project
+---
 
-```bash
-# development
-$ npm run start
+## ⚙️ Configuración del Entorno (`.env`)
 
-# watch mode
-$ npm run start:dev
+Crea un archivo `.env` en la raíz de `documentador-backend`:
 
-# production mode
-$ npm run start:prod
+```env
+PORT=3001
+NODE_ENV=development
+FRONTEND_URL=http://localhost:5173
+
+# Base de datos
+MONGODB_URI=mongodb://127.0.0.1:27017/codescribe
+
+# Autenticación JWT
+JWT_SECRET=super_secret_jwt_key_codescribe
+JWT_EXPIRES_IN=7d
+
+# GitHub OAuth 2.0
+GITHUB_CLIENT_ID=tu_github_client_id
+GITHUB_CLIENT_SECRET=tu_github_client_secret
+GITHUB_CALLBACK_URL=http://localhost:3001/api/auth/github/callback
+
+# Cola de tareas Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+# Comunicación con Servicio de IA
+AI_SERVICE_URL=http://localhost:8000
+AI_SERVICE_SECRET=shared_secret
+
+# Cifrado simétrico de tokens (32 caracteres)
+GITHUB_TOKEN_ENCRYPTION_KEY=12345678901234567890123456789012
+
+# Rate Limiting
+THROTTLE_TTL=60
+THROTTLE_LIMIT=10
 ```
 
-## Run tests
+---
 
+## 🚀 Puesta en Marcha
+
+### 1. Iniciar Base de Datos y Redis
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+docker compose up -d
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
+### 2. Instalar Dependencias
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm install
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 3. Ejecutar en Modo Desarrollo
+```bash
+npm run start:dev
+```
+La API estará disponible en `http://localhost:3001/api`.
 
-## Observability
+---
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+## 📡 Endpoints de la API
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+| Verbo | Ruta | Auth | Descripción |
+|---|---|---|---|
+| `GET` | `/api/auth/github` | Pública | Redirige al inicio de sesión con GitHub |
+| `GET` | `/api/auth/github/callback` | Pública | Callback de OAuth (emite JWT y redirige al frontend) |
+| `POST` | `/api/auth/demo` | Pública | Login instantáneo con usuario de prueba |
+| `GET` | `/api/auth/me` | JWT | Retorna el perfil del usuario en sesión |
+| `POST` | `/api/repositories/analyze` | JWT | Valida repositorio y encola tarea de análisis |
+| `GET` | `/api/jobs/:id/stream` | JWT | Stream SSE con eventos de progreso cada 2 segundos |
+| `GET` | `/api/documentation` | JWT | Lista todas las documentaciones del usuario |
+| `GET` | `/api/documentation/:id` | JWT | Obtiene una documentación por ID |
+| `DELETE` | `/api/documentation/:id` | JWT | Elimina permanentemente un documento |
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+---
 
-To add it to this project:
+## 🧪 Pruebas y Calidad de Código
 
 ```bash
-$ npm install @nestjs/observe
+# Pruebas unitarias
+npm run test
+
+# Pruebas con cobertura
+npm run test:cov
+
+# Pruebas de integración E2E
+npm run test:e2e
+
+# Linter rápido con Oxlint
+npm run lint
+
+# Formateo con Prettier
+npm run format
 ```
-
-Then follow the [setup guide](https://docs.nestjs.com/observability/overview) - it takes a single import and an app key.
-
-The free plan needs no payment details and covers 300,000 events a month. You can also browse the [live demo](https://www.observe-demo.nestjs.com/dashboard) first - the whole dashboard over a busy service's data, with nothing to install.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observe](https://observe.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
