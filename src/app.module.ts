@@ -10,6 +10,7 @@ import { RepositoryModule } from './modules/repository/repository.module';
 import { JobsModule } from './modules/jobs/jobs.module';
 import { DocumentationModule } from './modules/documentation/documentation.module';
 import { AiGatewayModule } from './modules/ai-gateway/ai-gateway.module';
+import { NotionExportModule } from './modules/notion-export/notion-export.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { AiGatewayModule } from './modules/ai-gateway/ai-gateway.module';
     JobsModule,
     DocumentationModule,
     AiGatewayModule,
+    NotionExportModule,
   ],
 })
 export class AppModule {}
