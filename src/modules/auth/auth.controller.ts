@@ -37,12 +37,13 @@ export class AuthController {
   @Public()
   @Post('demo')
   async demoLogin() {
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
     const demoUser = await this.usersService.findOrCreate({
-      githubId: '99999999',
-      username: 'usuario-demo',
-      displayName: 'Usuario Demo',
+      githubId: `demo_${Date.now()}_${randomSuffix}`,
+      username: `demo_${randomSuffix}`,
+      displayName: `Usuario Demo (${randomSuffix})`,
       avatarUrl: 'https://avatars.githubusercontent.com/u/9919?s=200&v=4',
-      email: 'demo@codescribe.local',
+      email: `demo_${randomSuffix}@codescribe.local`,
       accessToken: 'ghp_demo_mock_token_for_local_testing',
     });
     const token = this.authService.signToken(demoUser);

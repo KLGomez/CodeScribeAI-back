@@ -1,18 +1,32 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Job, JobDocument, JobStatus } from './schemas/job.schema';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class JobsService {
   constructor(
     @InjectModel(Job.name) private jobModel: Model<JobDocument>,
     @InjectQueue('analysis') private analysisQueue: Queue,
+    private usersService: UsersService,
   ) {}
 
   async create(userId: string, repoUrl: string): Promise<JobDocument> {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    const FREE_LIMIT = 5;
+    if (user.plan === 'free' && (user.analysisCount ?? 0) >= FREE_LIMIT) {
+      throw new ForbiddenException(
+        `Has alcanzado el límite de ${FREE_LIMIT} análisis para el plan gratuito.`,
+      );
+    }
+
     const job = await this.jobModel.create({
       userId: new Types.ObjectId(userId),
       repoUrl,

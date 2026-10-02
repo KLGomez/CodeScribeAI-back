@@ -58,6 +58,8 @@ export class JobsProcessor extends WorkerHost {
         tokensUsed: result.tokensUsed,
       });
 
+      await this.usersService.incrementAnalysisCount(userId);
+
       await this.jobsService.updateStatus(jobId, JobStatus.DONE, {
         documentationId: (doc as any)._id.toString(),
         tokensUsed: result.tokensUsed,

@@ -9,6 +9,7 @@ import {
   MessageEvent,
 } from '@nestjs/common';
 import { Observable, interval, switchMap, map, takeWhile, finalize } from 'rxjs';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JobsService } from './jobs.service';
@@ -21,6 +22,7 @@ import { JobStatus } from './schemas/job.schema';
 export class JobsController {
   constructor(private readonly jobsService: JobsService) {}
 
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post()
   create(@Body() dto: CreateJobDto, @CurrentUser() user: UserDocument) {
     return this.jobsService.create((user as any)._id.toString(), dto.repoUrl);
