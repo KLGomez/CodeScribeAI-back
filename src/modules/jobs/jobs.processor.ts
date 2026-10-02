@@ -35,12 +35,14 @@ export class JobsProcessor extends WorkerHost {
     const startTime = Date.now();
 
     this.logger.log(`Processing job ${jobId} → ${repoUrl}`);
-    await this.jobsService.updateStatus(jobId, JobStatus.PROCESSING);
+    await this.jobsService.updateStatus(jobId, JobStatus.PROCESSING, { progress: 15 });
 
     try {
       const user = await this.usersService.findByIdWithToken(userId);
       const key = this.configService.get<string>('githubTokenEncryptionKey');
       const githubToken = decryptToken(user!.githubToken, key);
+
+      await this.jobsService.updateStatus(jobId, JobStatus.PROCESSING, { progress: 40 });
 
       const result = await this.aiGatewayService.analyze({
         repoUrl,
@@ -48,6 +50,8 @@ export class JobsProcessor extends WorkerHost {
         userId,
         jobId,
       });
+
+      await this.jobsService.updateStatus(jobId, JobStatus.PROCESSING, { progress: 85 });
 
       const doc = await this.documentationService.create({
         userId: new Types.ObjectId(userId),
