@@ -7,10 +7,11 @@
 ## 🚀 Descripción del Proyecto
 
 El **Backend de CodeScribe AI** gestiona el ciclo de vida completo de análisis y documentación de repositorios:
-- **Autenticación con GitHub OAuth & Modo Demo:** Gestión de sesiones seguras mediante JWT y almacenamiento de tokens de GitHub cifrados con AES-256-CBC.
+- **Autenticación con GitHub OAuth & Modo Demo Aislado:** Gestión de sesiones seguras mediante JWT y almacenamiento de tokens de GitHub cifrados con **AES-256-GCM** (con fallback de descifrado retrocompatible para registros previos). El modo demo genera identificadores de sesión únicos y efímeros para evitar colisiones entre usuarios.
 - **Encolamiento Asíncrono con BullMQ y Redis:** Procesamiento en segundo plano de tareas pesadas de inspección y llamadas a LLMs sin bloquear la API REST.
-- **Streaming en Tiempo Real con Server-Sent Events (SSE):** Notificación continua del progreso del análisis hacia el cliente cada 2 segundos.
-- **Integración Segura con el Servicio de IA:** Comunicación HTTP resiliente con reintentos y retroceso exponencial hacia `documentador-ai-service`.
+- **Streaming en Tiempo Real con Server-Sent Events (SSE):** Notificación continua del progreso del análisis hacia el cliente con actualización incremental por etapas (15%, 40%, 85%, 100%).
+- **Integración Segura con el Servicio de IA:** Comunicación HTTP resiliente con reintentos y retroceso exponencial hacia el motor de IA.
+- **Control de Acceso y Rate Limiting:** Verificación estricta de propiedad de jobs y documentos, guard global de `ThrottlerModule` activo y validación de variables críticas al iniciar en producción.
 - **Persistencia en MongoDB con Mongoose 9:** Modelos tipados para usuarios, repositorios, tareas (`jobs`) y documentos generados.
 
 ---
@@ -21,7 +22,7 @@ El **Backend de CodeScribe AI** gestiona el ciclo de vida completo de análisis 
 - **Runtime:** Node.js (v20+) con TypeScript
 - **Base de Datos NoSQL:** MongoDB 7.0 + Mongoose 9.10
 - **Cola de Mensajes & Caché:** Redis 7.0 + BullMQ 6.3 + ioredis 6.0
-- **Seguridad & Autenticación:** Passport.js (`passport-github2`, `passport-jwt`), Helmet, `@nestjs/throttler`, crypto nativo (AES-256)
+- **Seguridad & Autenticación:** Passport.js (`passport-github2`, `passport-jwt`), Helmet, `@nestjs/throttler` (ThrottlerGuard global), cifrado nativo autenticado (AES-256-GCM)
 - **Pruebas y Linting:** Vitest 4.1, Supertest, Oxlint
 
 ---
@@ -30,16 +31,17 @@ El **Backend de CodeScribe AI** gestiona el ciclo de vida completo de análisis 
 
 ```text
 src/
-├── common/             # Filtros de excepción, guardias JWT, decoradores y cifrado AES-256
-├── config/             # Configuración centralizada de variables de entorno
+├── common/             # Filtros de excepción, guardias JWT, decoradores y cifrado AES-256-GCM
+├── config/             # Configuración centralizada y validación estricta de secretos
 ├── database/           # Módulo de conexión a MongoDB
 ├── modules/
-│   ├── ai-gateway/     # Cliente HTTP con reintentos hacia documentador-ai-service
-│   ├── auth/           # OAuth de GitHub, Modo Demo y emisión de JWT
-│   ├── documentation/  # Controlador y servicio de consulta y eliminación de documentos
-│   ├── jobs/           # Procesador BullMQ y endpoint SSE de streaming en tiempo real
+│   ├── ai-gateway/     # Cliente HTTP con reintentos hacia el servicio de IA
+│   ├── auth/           # OAuth de GitHub, Modo Demo aislado y emisión de JWT
+│   ├── documentation/  # Consulta y eliminación de documentos con control de propiedad
+│   ├── health/         # Endpoint GET /health con verificación activa de MongoDB
+│   ├── jobs/           # Procesador BullMQ, autorización y endpoint SSE de streaming
 │   ├── repository/     # Registro y validación de repositorios de GitHub
-│   └── users/          # Gestión de perfiles y credenciales de usuario
+│   └── users/          # Gestión de perfiles y cuotas de análisis por usuario
 └── main.ts             # Arranque de la aplicación, configuración de CORS, Helmet y Pipes
 ```
 
@@ -108,15 +110,17 @@ La API estará disponible en `http://localhost:3001/api`.
 
 | Verbo | Ruta | Auth | Descripción |
 |---|---|---|---|
+| `GET` | `/api/health` | Pública | Chequeo de estado del servicio y conexión a MongoDB |
 | `GET` | `/api/auth/github` | Pública | Redirige al inicio de sesión con GitHub |
 | `GET` | `/api/auth/github/callback` | Pública | Callback de OAuth (emite JWT y redirige al frontend) |
-| `POST` | `/api/auth/demo` | Pública | Login instantáneo con usuario de prueba |
+| `POST` | `/api/auth/demo` | Pública | Login instantáneo con usuario de sesión efímero e independiente |
 | `GET` | `/api/auth/me` | JWT | Retorna el perfil del usuario en sesión |
-| `POST` | `/api/repositories/analyze` | JWT | Valida repositorio y encola tarea de análisis |
-| `GET` | `/api/jobs/:id/stream` | JWT | Stream SSE con eventos de progreso cada 2 segundos |
-| `GET` | `/api/documentation` | JWT | Lista todas las documentaciones del usuario |
-| `GET` | `/api/documentation/:id` | JWT | Obtiene una documentación por ID |
-| `DELETE` | `/api/documentation/:id` | JWT | Elimina permanentemente un documento |
+| `POST` | `/api/repositories/analyze` | JWT | Valida repositorio, incrementa cuota y encola tarea |
+| `GET` | `/api/jobs/:id` | JWT | Consulta el estado y progreso del job (valida propiedad) |
+| `GET` | `/api/jobs/:id/stream` | JWT | Stream SSE con eventos de progreso en tiempo real (valida propiedad) |
+| `GET` | `/api/documentation` | JWT | Lista todas las documentaciones pertenecientes al usuario |
+| `GET` | `/api/documentation/:id` | JWT | Obtiene una documentación por ID (valida propiedad) |
+| `DELETE` | `/api/documentation/:id` | JWT | Elimina permanentemente un documento (valida propiedad) |
 
 ---
 

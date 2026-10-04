@@ -22,7 +22,6 @@ describe('DocumentationController', () => {
   const mockDocService = {
     findByUser: vi.fn().mockResolvedValue([mockDoc]),
     findById: vi.fn().mockResolvedValue(mockDoc),
-    create: vi.fn().mockResolvedValue(mockDoc),
     delete: vi.fn().mockResolvedValue({ message: 'Documento eliminado correctamente' }),
   };
 
