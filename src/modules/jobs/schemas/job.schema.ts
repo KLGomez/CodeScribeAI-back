@@ -12,7 +12,7 @@ export enum JobStatus {
 
 @Schema({ timestamps: true })
 export class Job {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
   userId: Types.ObjectId;
 
   @Prop({ required: true })
@@ -27,19 +27,32 @@ export class Job {
   status: JobStatus;
 
   @Prop()
-  documentationId: string;
+  stage?: string;
 
   @Prop()
-  errorMessage: string;
+  documentationId?: string;
+
+  @Prop()
+  errorCode?: string;
+
+  @Prop()
+  errorMessage?: string;
 
   @Prop({ default: 0, min: 0, max: 100 })
   progress: number;
 
   @Prop()
-  tokensUsed: number;
+  tokensUsed?: number;
 
   @Prop()
-  durationMs: number;
+  durationMs?: number;
+
+  /** TTL index for automatic ephemeral demo job cleanup */
+  @Prop({ type: Date, index: { expireAfterSeconds: 0 } })
+  expiresAt?: Date;
 }
 
 export const JobSchema = SchemaFactory.createForClass(Job);
+
+// B-11: Indice compuesto para busqueda eficiente de jobs por usuario y orden cronologico
+JobSchema.index({ userId: 1, createdAt: -1 });

@@ -3,6 +3,27 @@ import { Document } from 'mongoose';
 
 export type UserDocument = User & Document;
 
+@Schema({ _id: false })
+export class NotionIntegration {
+  /** AES-256-GCM encrypted Notion access token */
+  @Prop({ select: false })
+  accessTokenEnc: string;
+
+  @Prop()
+  workspaceName?: string;
+
+  @Prop()
+  workspaceId?: string;
+
+  @Prop()
+  botId?: string;
+
+  @Prop()
+  connectedAt?: Date;
+}
+
+export const NotionIntegrationSchema = SchemaFactory.createForClass(NotionIntegration);
+
 @Schema({ timestamps: true })
 export class User {
   @Prop({ required: true, unique: true })
@@ -29,6 +50,16 @@ export class User {
 
   @Prop({ default: 0 })
   analysisCount: number;
+
+  @Prop({ default: false })
+  isDemo: boolean;
+
+  /** TTL index for automatic ephemeral demo session cleanup */
+  @Prop({ type: Date, index: { expireAfterSeconds: 0 } })
+  expiresAt?: Date;
+
+  @Prop({ type: NotionIntegrationSchema })
+  notion?: NotionIntegration;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

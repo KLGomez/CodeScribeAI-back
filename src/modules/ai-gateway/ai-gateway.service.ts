@@ -15,6 +15,9 @@ export interface AnalyzeResponse {
   tokensUsed: number;
   durationMs: number;
   sections: string[];
+  filesAnalyzed?: number;
+  filesTotal?: number;
+  truncated?: boolean;
 }
 
 @Injectable()
