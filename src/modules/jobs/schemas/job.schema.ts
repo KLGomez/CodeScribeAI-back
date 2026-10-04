@@ -19,6 +19,7 @@ export class Job {
   repoUrl: string;
 
   @Prop({
+    type: String,
     required: true,
     default: JobStatus.QUEUED,
     enum: Object.values(JobStatus),

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
 import configuration from './config/configuration';
 import { DatabaseModule } from './database/database.module';
@@ -10,6 +11,7 @@ import { RepositoryModule } from './modules/repository/repository.module';
 import { JobsModule } from './modules/jobs/jobs.module';
 import { DocumentationModule } from './modules/documentation/documentation.module';
 import { AiGatewayModule } from './modules/ai-gateway/ai-gateway.module';
+import { NotionExportModule } from './modules/notion-export/notion-export.module';
 
 @Module({
   imports: [
@@ -39,6 +41,13 @@ import { AiGatewayModule } from './modules/ai-gateway/ai-gateway.module';
     JobsModule,
     DocumentationModule,
     AiGatewayModule,
+    NotionExportModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}

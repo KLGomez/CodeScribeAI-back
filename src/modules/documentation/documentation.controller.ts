@@ -1,10 +1,8 @@
 import {
   Controller,
   Get,
-  Post,
   Delete,
   Param,
-  Body,
   UseGuards,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -12,7 +10,6 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { DocumentationService } from './documentation.service';
 import { UserDocument } from '../users/schemas/user.schema';
-import { Documentation } from './schemas/documentation.schema';
 
 @Controller(['documentation', 'docs'])
 @UseGuards(JwtAuthGuard)
@@ -44,25 +41,6 @@ export class DocumentationController {
     }
     const userId = (user as any)._id.toString();
     return this.docService.findById(id, userId);
-  }
-
-  /**
-   * POST /docs o POST /documentation
-   * Extrae el userId del token JWT y lo asigna obligatoriamente al guardar.
-   */
-  @Post()
-  create(
-    @Body() createDto: Partial<Documentation>,
-    @CurrentUser() user: UserDocument,
-  ) {
-    if (!user || !(user as any)._id) {
-      throw new UnauthorizedException('Usuario no autenticado');
-    }
-    const userId = (user as any)._id;
-    return this.docService.create({
-      ...createDto,
-      userId,
-    });
   }
 
   /**
