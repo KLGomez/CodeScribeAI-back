@@ -12,7 +12,10 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { UserDocument } from '../users/schemas/user.schema';
 import { NotionExportService, NotionExportResult } from './notion-export.service';
 import { ExportNotionDto } from './dto/export-notion.dto';
 
@@ -23,41 +26,22 @@ import { ExportNotionDto } from './dto/export-notion.dto';
 export class NotionExportController {
   constructor(private readonly notionExportService: NotionExportService) {}
 
-  /**
-   * POST /api/export/notion
-   * Exporta documentación técnica en Markdown directamente como una página nativa en Notion.
-   */
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('notion')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Exportar documentación Markdown a Notion',
     description:
-      'Transforma el contenido Markdown a bloques JSON nativos de Notion y crea una nueva página dentro de la página padre indicada.',
+      'Transforma el contenido Markdown de un documento a bloques nativos de Notion y crea una página dentro del padre indicado, usando las credenciales vinculadas del usuario.',
   })
   @ApiResponse({
     status: 200,
     description: 'Documentación exportada exitosamente a Notion.',
-    schema: {
-      example: {
-        success: true,
-        url: 'https://www.notion.so/CodeScribe-Doc-1234567890abcdef',
-      },
-    },
   })
-  @ApiResponse({
-    status: 400,
-    description:
-      'Error de validación, sintaxis Markdown incompatible o token de Notion inválido.',
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'No autorizado (token JWT de la sesión ausente o inválido).',
-  })
-  @ApiResponse({
-    status: 500,
-    description: 'Error interno del servidor durante la exportación a Notion.',
-  })
-  async exportToNotion(@Body() dto: ExportNotionDto): Promise<NotionExportResult> {
-    return this.notionExportService.exportMarkdownToNotion(dto);
+  async exportToNotion(
+    @CurrentUser() user: UserDocument,
+    @Body() dto: ExportNotionDto,
+  ): Promise<NotionExportResult> {
+    return this.notionExportService.exportMarkdownToNotion(user, dto);
   }
 }

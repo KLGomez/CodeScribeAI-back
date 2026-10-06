@@ -10,9 +10,10 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { Observable, interval, switchMap, map, takeWhile, finalize } from 'rxjs';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Types } from 'mongoose';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -24,6 +25,9 @@ import { JobStatus } from './schemas/job.schema';
 @Controller('jobs')
 @UseGuards(JwtAuthGuard)
 export class JobsController {
+  private readonly logger = new Logger(JobsController.name);
+  private activeStreamsByUser = new Map<string, number>();
+
   constructor(private readonly jobsService: JobsService) {}
 
   @Throttle({ default: { limit: 5, ttl: 60000 } })
@@ -53,9 +57,11 @@ export class JobsController {
   }
 
   /**
-   * Server-Sent Events endpoint — polls job status every 2s and pushes updates.
-   * Closes the stream automatically when the job reaches a terminal state.
+   * B-7: Server-Sent Events endpoint autenticado por header Bearer.
+   * Emite status, progress, stage, documentationId, errorCode y errorMessage cada 2s.
+   * Limita a 3 streams simultáneos por usuario y cierra limpiamente la conexión.
    */
+  @SkipThrottle()
   @Sse(':id/stream')
   async stream(
     @Param('id') id: string,
@@ -68,9 +74,17 @@ export class JobsController {
     if (!job) {
       throw new NotFoundException('Trabajo no encontrado');
     }
-    if (job.userId.toString() !== (user as any)._id.toString()) {
+    const userId = (user as any)._id.toString();
+    if (job.userId.toString() !== userId) {
       throw new ForbiddenException('No tienes permiso para monitorear este trabajo');
     }
+
+    // Límite de 3 streams simultáneos por usuario
+    const active = this.activeStreamsByUser.get(userId) || 0;
+    if (active >= 3) {
+      throw new ForbiddenException('Has alcanzado el límite de 3 conexiones de streaming simultáneas');
+    }
+    this.activeStreamsByUser.set(userId, active + 1);
 
     return interval(2000).pipe(
       switchMap(() => this.jobsService.findById(id)),
@@ -80,6 +94,8 @@ export class JobsController {
             data: JSON.stringify({
               status: JobStatus.ERROR,
               progress: 0,
+              stage: 'error',
+              errorCode: 'JOB_NOT_FOUND',
               errorMessage: 'El trabajo fue eliminado',
             }),
           };
@@ -88,7 +104,9 @@ export class JobsController {
           data: JSON.stringify({
             status: currentJob.status ?? 'queued',
             progress: currentJob.progress ?? 0,
+            stage: currentJob.stage ?? 'conectando',
             documentationId: currentJob.documentationId,
+            errorCode: currentJob.errorCode,
             errorMessage: currentJob.errorMessage,
           }),
         };
@@ -100,7 +118,15 @@ export class JobsController {
         },
         true, // emit the terminal event before completing
       ),
-      finalize(() => console.log(`[SSE] Stream closed for job ${id}`)),
+      finalize(() => {
+        const count = (this.activeStreamsByUser.get(userId) || 1) - 1;
+        if (count <= 0) {
+          this.activeStreamsByUser.delete(userId);
+        } else {
+          this.activeStreamsByUser.set(userId, count);
+        }
+        this.logger.log(`[SSE] Stream cerrado limpiamente para job ${id} (usuario ${userId})`);
+      }),
     );
   }
 }

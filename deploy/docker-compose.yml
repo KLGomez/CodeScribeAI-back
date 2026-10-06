@@ -1,0 +1,135 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:7.0
+    container_name: codescribe-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - codescribe-internal
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', 'db.adminCommand("ping")']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: codescribe-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - codescribe-internal
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ai-service:
+    build:
+      context: ../../documentador-ai-service
+      dockerfile: Dockerfile
+    container_name: codescribe-ai-service
+    restart: unless-stopped
+    expose:
+      - '8000'
+    environment:
+      - PORT=8000
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:?GEMINI_API_KEY requerida}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GEMINI_FALLBACK_MODEL=${GEMINI_FALLBACK_MODEL:-gemini-2.5-pro}
+      - AI_SERVICE_SECRET=${AI_SERVICE_SECRET:?AI_SERVICE_SECRET requerida}
+      - GITHUB_FALLBACK_TOKEN=${GITHUB_FALLBACK_TOKEN:-}
+      - ALLOWED_ORIGINS=http://backend:3001,http://localhost:3001
+      - MAX_CONCURRENT_ANALYSES=3
+      - MAX_SOURCE_FILES=20
+      - MAX_CHARS_PER_FILE=6000
+      - MAX_BUNDLE_CHARS=80000
+    networks:
+      - codescribe-internal
+    healthcheck:
+      test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://localhost:8000/health")']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  backend:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: codescribe-backend
+    restart: unless-stopped
+    ports:
+      - '3001:3001'
+    environment:
+      - PORT=3001
+      - NODE_ENV=${NODE_ENV:-production}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
+      - MONGODB_URI=mongodb://mongo:27017/codescribe
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - AI_SERVICE_URL=http://ai-service:8000
+      - AI_SERVICE_SECRET=${AI_SERVICE_SECRET:?AI_SERVICE_SECRET requerida}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET requerida}
+      - JWT_EXPIRES_IN=7d
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - GITHUB_CALLBACK_URL=${GITHUB_CALLBACK_URL:-http://localhost:3001/api/auth/github/callback}
+      - GITHUB_TOKEN_ENCRYPTION_KEY=${GITHUB_TOKEN_ENCRYPTION_KEY:?GITHUB_TOKEN_ENCRYPTION_KEY requerida}
+      - GITHUB_FALLBACK_TOKEN=${GITHUB_FALLBACK_TOKEN:-}
+      - NOTION_CLIENT_ID=${NOTION_CLIENT_ID:-}
+      - NOTION_CLIENT_SECRET=${NOTION_CLIENT_SECRET:-}
+      - NOTION_REDIRECT_URI=${NOTION_REDIRECT_URI:-}
+      - THROTTLE_TTL=60
+      - THROTTLE_LIMIT=10
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    networks:
+      - codescribe-internal
+      - codescribe-public
+    healthcheck:
+      test: ['CMD', 'node', '-e', 'fetch("http://localhost:3001/api/health").then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ../../documentador-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3001/api}
+    container_name: codescribe-frontend
+    restart: unless-stopped
+    ports:
+      - '${FRONTEND_PORT:-80}:8080'
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - codescribe-public
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://localhost:8080/']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+networks:
+  codescribe-internal:
+    driver: bridge
+  codescribe-public:
+    driver: bridge
+
+volumes:
+  mongo_data:
+  redis_data:

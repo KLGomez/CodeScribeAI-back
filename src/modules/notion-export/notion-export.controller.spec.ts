@@ -7,17 +7,21 @@ describe('NotionExportController', () => {
   let controller: NotionExportController;
   let service: NotionExportService;
 
+  const mockUser: any = {
+    _id: '66faef1234567890abcdef01',
+    username: 'testuser',
+  };
+
   beforeEach(() => {
-    service = new NotionExportService();
+    service = new NotionExportService({} as any, {} as any, {} as any);
     controller = new NotionExportController(service);
   });
 
-  it('debe llamar al servicio exportMarkdownToNotion y retornar el resultado', async () => {
+  it('debe llamar al servicio exportMarkdownToNotion con el usuario autenticado y retornar el resultado', async () => {
     const dto: ExportNotionDto = {
-      markdown: '# Documento',
+      documentationId: '66faef1234567890abcdef02',
+      targetPageId: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
       title: 'Título del Documento',
-      targetPageId: 'page-1234',
-      notionAccessToken: 'token-abc',
     };
 
     const expectedResult = {
@@ -27,8 +31,8 @@ describe('NotionExportController', () => {
 
     vi.spyOn(service, 'exportMarkdownToNotion').mockResolvedValueOnce(expectedResult);
 
-    const result = await controller.exportToNotion(dto);
+    const result = await controller.exportToNotion(mockUser, dto);
     expect(result).toEqual(expectedResult);
-    expect(service.exportMarkdownToNotion).toHaveBeenCalledWith(dto);
+    expect(service.exportMarkdownToNotion).toHaveBeenCalledWith(mockUser, dto);
   });
 });

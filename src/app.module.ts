@@ -13,9 +13,12 @@ import { DocumentationModule } from './modules/documentation/documentation.modul
 import { AiGatewayModule } from './modules/ai-gateway/ai-gateway.module';
 import { NotionExportModule } from './modules/notion-export/notion-export.module';
 
+import { RedisModule } from './common/redis/redis.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
+    RedisModule,
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (cfg: ConfigService) => [
@@ -31,6 +34,7 @@ import { NotionExportModule } from './modules/notion-export/notion-export.module
         connection: {
           host: cfg.get<string>('redis.host'),
           port: cfg.get<number>('redis.port'),
+          password: cfg.get<string>('redis.password') || undefined,
         },
       }),
     }),

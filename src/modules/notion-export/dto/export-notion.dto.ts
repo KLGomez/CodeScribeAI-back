@@ -1,36 +1,33 @@
-import { IsNotEmpty, IsString } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsNotEmpty, IsString, IsOptional, MaxLength, Matches, IsMongoId } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ExportNotionDto {
   @ApiProperty({
-    description: 'Contenido técnico en formato Markdown a exportar a Notion',
-    example: '# Arquitectura del Sistema\n\nEste documento describe la arquitectura...',
+    description: 'ID de MongoDB de la documentación a exportar',
+    example: '66faef1234567890abcdef01',
   })
-  @IsString({ message: 'El campo markdown debe ser una cadena de texto' })
-  @IsNotEmpty({ message: 'El campo markdown no puede estar vacío' })
-  markdown: string;
+  @IsMongoId({ message: 'documentationId debe ser un ObjectId de MongoDB válido' })
+  @IsNotEmpty({ message: 'documentationId es obligatorio' })
+  documentationId: string;
 
   @ApiProperty({
-    description: 'Título de la nueva página que se creará en Notion',
-    example: 'CodeScribe - Documentación de Arquitectura',
+    description: 'UUID de la página padre en Notion (con o sin guiones)',
+    example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
   })
-  @IsString({ message: 'El campo title debe ser una cadena de texto' })
-  @IsNotEmpty({ message: 'El campo title no puede estar vacío' })
-  title: string;
-
-  @ApiProperty({
-    description: 'ID o UUID de la página padre en Notion donde se anidará el documento',
-    example: 'a1b2c3d4e5f678901234567890abcdef',
-  })
-  @IsString({ message: 'El campo targetPageId debe ser una cadena de texto' })
-  @IsNotEmpty({ message: 'El campo targetPageId no puede estar vacío' })
+  @IsString({ message: 'targetPageId debe ser una cadena de texto' })
+  @Matches(
+    /^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$/,
+    { message: 'targetPageId debe ser un UUID válido de Notion' },
+  )
+  @IsNotEmpty({ message: 'targetPageId es obligatorio' })
   targetPageId: string;
 
-  @ApiProperty({
-    description: 'Token de acceso seguro de la integración u OAuth de Notion',
-    example: 'secret_abc123xyz456...',
+  @ApiPropertyOptional({
+    description: 'Título personalizado para la página en Notion (máx. 200 caracteres)',
+    example: 'Arquitectura y Documentación Técnica',
   })
-  @IsString({ message: 'El campo notionAccessToken debe ser una cadena de texto' })
-  @IsNotEmpty({ message: 'El campo notionAccessToken no puede estar vacío' })
-  notionAccessToken: string;
+  @IsOptional()
+  @IsString({ message: 'title debe ser una cadena de texto' })
+  @MaxLength(200, { message: 'El título no puede exceder 200 caracteres' })
+  title?: string;
 }

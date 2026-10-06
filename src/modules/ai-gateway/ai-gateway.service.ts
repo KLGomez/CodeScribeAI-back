@@ -15,6 +15,9 @@ export interface AnalyzeResponse {
   tokensUsed: number;
   durationMs: number;
   sections: string[];
+  filesAnalyzed?: number;
+  filesTotal?: number;
+  truncated?: boolean;
 }
 
 @Injectable()
@@ -56,30 +59,6 @@ export class AiGatewayService {
         // Exponential backoff: 2s, 4s, 8s
         await new Promise((r) => setTimeout(r, 2 ** attempt * 1000));
       }
-    }
-  }
-
-  async cleanup(targetId: string): Promise<{ success: boolean; message?: string }> {
-    const url = this.configService.get<string>('aiService.url');
-    const secret = this.configService.get<string>('aiService.secret');
-
-    try {
-      this.logger.log(`Enviando señal de limpieza al servicio de IA para target: ${targetId}`);
-      const { data } = await firstValueFrom(
-        this.httpService.delete<{ success: boolean; message?: string }>(
-          `${url}/cleanup/${targetId}`,
-          {
-            headers: { 'X-Internal-Secret': secret },
-            timeout: 5000,
-          },
-        ),
-      );
-      return data;
-    } catch (error: any) {
-      this.logger.warn(
-        `No se pudo completar la limpieza remota en AI Service para ${targetId}: ${error?.message || 'Error de conexión'}`,
-      );
-      return { success: false, message: error?.message };
     }
   }
 }
