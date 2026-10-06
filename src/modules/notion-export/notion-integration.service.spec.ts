@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   BadRequestException,
   ForbiddenException,
-  ConflictException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { NotionIntegrationService } from './notion-integration.service';
