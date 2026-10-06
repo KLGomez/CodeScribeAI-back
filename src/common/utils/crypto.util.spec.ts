@@ -37,4 +37,15 @@ describe('crypto.util', () => {
       'Formato de token cifrado inválido',
     );
   });
+
+  it('debe fallar al intentar descifrar si el authTag fue manipulado (autenticación AES-256-GCM)', () => {
+    const encrypted = encryptToken(plainToken, secretKey);
+    const [ivHex, authTagHex, encryptedHex] = encrypted.split(':');
+
+    // Manipular el authTag alterando un carácter hex
+    const tamperedTag = authTagHex.startsWith('a') ? 'b' + authTagHex.slice(1) : 'a' + authTagHex.slice(1);
+    const tamperedPayload = `${ivHex}:${tamperedTag}:${encryptedHex}`;
+
+    expect(() => decryptToken(tamperedPayload, secretKey)).toThrow();
+  });
 });

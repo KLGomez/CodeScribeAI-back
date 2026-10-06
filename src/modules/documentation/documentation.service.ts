@@ -12,8 +12,6 @@ import {
   Documentation,
   DocumentationDocument,
 } from './schemas/documentation.schema';
-import { AiGatewayService } from '../ai-gateway/ai-gateway.service';
-
 @Injectable()
 export class DocumentationService {
   private readonly logger = new Logger(DocumentationService.name);
@@ -21,7 +19,6 @@ export class DocumentationService {
   constructor(
     @InjectModel(Documentation.name)
     private docModel: Model<DocumentationDocument>,
-    private aiGatewayService: AiGatewayService,
   ) {}
 
   /**
@@ -100,25 +97,13 @@ export class DocumentationService {
       throw new ForbiddenException('No tienes permiso para eliminar esta documentación');
     }
 
-    const targetJobId = doc.jobId ? doc.jobId.toString() : id;
-
     // 3. Borrado Físico Definitivo en MongoDB (sin borrado lógico)
     await this.docModel.findByIdAndDelete(id).exec();
     this.logger.log(`Documentación ${id} eliminada físicamente de MongoDB por usuario ${userId}`);
 
-    // 4. Enviar señal de limpieza de archivos temporales al microservicio de Python
-    try {
-      await this.aiGatewayService.cleanup(targetJobId);
-      this.logger.log(`Señal de limpieza enviada exitosamente para ${targetJobId}`);
-    } catch (cleanupError: any) {
-      this.logger.warn(
-        `Aviso: No se pudo limpiar recursos temporales en Python para ${targetJobId}: ${cleanupError?.message}`,
-      );
-    }
-
     return {
       success: true,
-      message: 'Documentación eliminada permanentemente y recursos temporales liberados',
+      message: 'Documentación eliminada permanentemente',
     };
   }
 }

@@ -53,6 +53,31 @@ export class UsersService {
     );
   }
 
+  async createDemoUser(data: {
+    githubId: string;
+    username: string;
+    displayName: string;
+    avatarUrl: string;
+    email: string;
+    expiresAt: Date;
+  }): Promise<UserDocument> {
+    const key = this.configService.get<string>('githubTokenEncryptionKey');
+    const encryptedToken = encryptToken('demo_ephemeral_token', key);
+
+    return this.userModel.create({
+      githubId: data.githubId,
+      username: data.username,
+      displayName: data.displayName,
+      avatarUrl: data.avatarUrl,
+      email: data.email,
+      githubToken: encryptedToken,
+      plan: 'free',
+      analysisCount: 0,
+      isDemo: true,
+      expiresAt: data.expiresAt,
+    });
+  }
+
   async findById(id: string): Promise<UserDocument | null> {
     return this.userModel.findById(id).exec();
   }

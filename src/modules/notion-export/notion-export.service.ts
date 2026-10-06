@@ -1,12 +1,21 @@
 import {
   Injectable,
   Logger,
+  NotFoundException,
+  ForbiddenException,
+  ConflictException,
   BadRequestException,
   InternalServerErrorException,
 } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { ConfigService } from '@nestjs/config';
 import { Client, isNotionClientError, APIErrorCode } from '@notionhq/client';
 import { markdownToBlocks } from '@tryfabric/martian';
 import { ExportNotionDto } from './dto/export-notion.dto';
+import { Documentation, DocumentationDocument } from '../documentation/schemas/documentation.schema';
+import { User, UserDocument } from '../users/schemas/user.schema';
+import { decryptToken } from '../../common/utils/crypto.util';
 
 export interface NotionExportResult {
   success: boolean;
@@ -17,89 +26,175 @@ export interface NotionExportResult {
 export class NotionExportService {
   private readonly logger = new Logger(NotionExportService.name);
 
-  /**
-   * Exporta contenido Markdown a una nueva página en Notion dentro de una página padre (targetPageId).
-   * Convierte la sintaxis Markdown en bloques nativos de Notion y maneja la paginación de bloques (>100).
-   */
-  async exportMarkdownToNotion(dto: ExportNotionDto): Promise<NotionExportResult> {
-    // 1. Inicializar cliente con el token del usuario (OAuth / Internal Integration)
-    const notion = new Client({
-      auth: dto.notionAccessToken,
-    });
+  constructor(
+    @InjectModel(Documentation.name)
+    private docModel: Model<DocumentationDocument>,
+    @InjectModel(User.name)
+    private userModel: Model<UserDocument>,
+    private configService: ConfigService,
+  ) {}
 
-    // 2. Parsear el Markdown a bloques compatibles con Notion utilizando @tryfabric/martian
-    let blocks: any[];
-    try {
-      blocks = markdownToBlocks(dto.markdown);
-    } catch (parseError: any) {
-      this.logger.error(`Error al parsear Markdown con Martian: ${parseError?.message}`, parseError?.stack);
-      throw new BadRequestException(
-        `Error al parsear el contenido Markdown a bloques de Notion: ${parseError?.message || 'Formato Markdown inválido'}`,
+  /**
+   * Sanitiza y divide fragmentos de texto en rich_text que excedan el límite estricto de Notion (2.000 caracteres)
+   */
+  private sanitizeBlocks(blocks: any[]): any[] {
+    const result: any[] = [];
+
+    for (const block of blocks) {
+      const type = block.type;
+      if (block[type] && Array.isArray(block[type].rich_text)) {
+        const splitRichText: any[] = [];
+        for (const rt of block[type].rich_text) {
+          const content = rt.text?.content || rt.plain_text || '';
+          if (content.length > 2000) {
+            for (let i = 0; i < content.length; i += 2000) {
+              const slice = content.slice(i, i + 2000);
+              splitRichText.push({
+                ...rt,
+                text: { ...rt.text, content: slice },
+                plain_text: slice,
+              });
+            }
+          } else {
+            splitRichText.push(rt);
+          }
+        }
+        block[type].rich_text = splitRichText;
+      }
+      result.push(block);
+    }
+
+    return result;
+  }
+
+  async exportMarkdownToNotion(
+    user: UserDocument,
+    dto: ExportNotionDto,
+  ): Promise<NotionExportResult> {
+    if (user.isDemo) {
+      throw new ForbiddenException(
+        'Las integraciones con Notion no están disponibles en modo demo. Por favor, inicia sesión con GitHub.',
       );
     }
 
+    // 1. Cargar documentación verificando que pertenece al usuario autenticado
+    const doc = await this.docModel.findById(dto.documentationId).exec();
+    if (!doc) {
+      throw new NotFoundException('Documentación no encontrada');
+    }
+
+    if (doc.userId.toString() !== (user as any)._id.toString()) {
+      throw new ForbiddenException('No tienes permiso para exportar esta documentación');
+    }
+
+    // 2. Obtener y descifrar el token de acceso de Notion del usuario
+    const dbUser = await this.userModel
+      .findById((user as any)._id)
+      .select('+notion.accessTokenEnc')
+      .exec();
+
+    if (!dbUser?.notion?.accessTokenEnc) {
+      throw new ConflictException(
+        'NOTION_NOT_CONNECTED: No hay una cuenta de Notion vinculada. Conéctala en Configuración.',
+      );
+    }
+
+    const encKey = this.configService.get<string>('githubTokenEncryptionKey');
+    const accessToken = decryptToken(dbUser.notion.accessTokenEnc, encKey);
+
+    const notion = new Client({ auth: accessToken });
+
+    // 3. Determinar el título de la página
+    let pageTitle = dto.title?.trim();
+    if (!pageTitle) {
+      const firstHeadingMatch = doc.content.match(/^#\s+(.+)$/m);
+      if (firstHeadingMatch) {
+        pageTitle = firstHeadingMatch[1].trim().slice(0, 200);
+      } else {
+        const repoName = doc.repoUrl.replace(/\/$/, '').split('/').pop() || 'Repo';
+        pageTitle = `Documentación de ${repoName}`;
+      }
+    }
+
+    // 4. Parsear Markdown a bloques de Notion con Martian y sanitizar límites de 2.000 caracteres
+    let blocks: any[];
+    try {
+      blocks = markdownToBlocks(doc.content);
+    } catch (parseError: any) {
+      this.logger.error(`Error al parsear Markdown con Martian: ${parseError.message}`);
+      throw new BadRequestException('Formato de contenido Markdown incompatible');
+    }
+
     if (!Array.isArray(blocks) || blocks.length === 0) {
-      // Si el Markdown estaba vacío o no generó bloques, generamos al menos un bloque de párrafo vacío
       blocks = [
         {
           object: 'block',
           type: 'paragraph',
-          paragraph: {
-            rich_text: [],
-          },
+          paragraph: { rich_text: [] },
         },
       ];
     }
 
-    // 3. Manejo de límites de la API de Notion:
-    // notion.pages.create() admite un máximo de 100 bloques en la propiedad `children`.
-    // Si el documento excede 100 bloques, los primeros 100 se envían al crear la página
-    // y los restantes se añaden en bloques de hasta 100 mediante notion.blocks.children.append().
+    blocks = this.sanitizeBlocks(blocks);
+
     const initialBlocks = blocks.slice(0, 100);
     const remainingBlocks = blocks.slice(100);
 
     try {
       this.logger.log(
-        `Creando página en Notion: "${dto.title}" dentro de la página padre "${dto.targetPageId}" (${blocks.length} bloques totales)`,
+        `Creando página en Notion "${pageTitle}" en padre "${dto.targetPageId}" (${blocks.length} bloques totales)`,
       );
 
       const response = await notion.pages.create({
-        parent: {
-          page_id: dto.targetPageId,
-        },
+        parent: { page_id: dto.targetPageId },
         properties: {
           title: {
-            title: [
-              {
-                text: {
-                  content: dto.title,
-                },
-              },
-            ],
+            title: [{ text: { content: pageTitle } }],
           },
         },
         children: initialBlocks,
       });
 
-      // Añadir bloques restantes en lotes de 100 si el documento es extenso
+      // 5. Agregar bloques restantes en lotes de 100 con control de ritmo (~3 req/s)
       if (remainingBlocks.length > 0) {
         const chunkSize = 100;
         for (let i = 0; i < remainingBlocks.length; i += chunkSize) {
           const chunk = remainingBlocks.slice(i, i + chunkSize);
-          await notion.blocks.children.append({
-            block_id: response.id,
-            children: chunk,
-          });
+
+          // Pausa preventiva de 350ms para evitar rate limiting de Notion
+          await new Promise((resolve) => setTimeout(resolve, 350));
+
+          let retries = 3;
+          while (retries > 0) {
+            try {
+              await notion.blocks.children.append({
+                block_id: response.id,
+                children: chunk,
+              });
+              break;
+            } catch (appendErr: any) {
+              if (
+                isNotionClientError(appendErr) &&
+                appendErr.code === APIErrorCode.RateLimited &&
+                retries > 1
+              ) {
+                this.logger.warn('Rate limit de Notion alcanzado al agregar bloques. Reintentando...');
+                await new Promise((resolve) => setTimeout(resolve, 2000));
+                retries--;
+              } else {
+                throw appendErr;
+              }
+            }
+          }
         }
       }
 
-      // 4. Obtener URL de la página generada (de la respuesta o fallback estructurado)
       const pageUrl =
         'url' in response && response.url
           ? response.url
           : `https://notion.so/${response.id.replace(/-/g, '')}`;
 
-      this.logger.log(`Página exportada exitosamente a Notion: ${pageUrl}`);
+      this.logger.log(`Documentación exportada exitosamente a Notion: ${pageUrl}`);
 
       return {
         success: true,
@@ -110,9 +205,6 @@ export class NotionExportService {
     }
   }
 
-  /**
-   * Mapea y traduce las excepciones de la API de Notion a excepciones HTTP de NestJS.
-   */
   private handleNotionError(error: any): never {
     this.logger.error(`Error en la API de Notion: ${error?.message}`, error?.stack);
 
@@ -120,35 +212,38 @@ export class NotionExportService {
       switch (error.code) {
         case APIErrorCode.Unauthorized:
           throw new BadRequestException(
-            'El token de acceso de Notion no es válido o ha expirado. Por favor, reautentica la cuenta.',
+            'El token de acceso de Notion no es válido o ha expirado. Por favor, vuelve a vincular tu cuenta.',
           );
         case APIErrorCode.RestrictedResource:
           throw new BadRequestException(
-            'La integración no tiene permisos suficientes para acceder o escribir en este recurso de Notion.',
+            'La integración no tiene permisos para escribir en la página destino indicada.',
           );
         case APIErrorCode.ObjectNotFound:
           throw new BadRequestException(
-            'La página destino (targetPageId) no fue encontrada. Asegúrate de haber compartido la página con la integración de Notion en la configuración de la página.',
+            'La página destino no fue encontrada. Asegúrate de haber compartido la página con CodeScribe (⋯ -> Conexiones).',
           );
         case APIErrorCode.RateLimited:
           throw new BadRequestException(
-            'Se ha superado el límite de peticiones hacia la API de Notion. Por favor, intenta de nuevo en unos momentos.',
-          );
-        case APIErrorCode.ValidationError:
-          throw new BadRequestException(
-            `Error de validación en la API de Notion: ${error.message}`,
+            'Se ha superado el límite de peticiones hacia Notion. Por favor, intenta de nuevo en unos minutos.',
           );
         default:
-          throw new BadRequestException(`Error devuelto por la API de Notion [${error.code}]: ${error.message}`);
+          throw new BadRequestException(
+            `Error devuelto por la API de Notion [${error.code}]: ${error.message}`,
+          );
       }
     }
 
-    if (error instanceof BadRequestException || error instanceof InternalServerErrorException) {
+    if (
+      error instanceof BadRequestException ||
+      error instanceof ForbiddenException ||
+      error instanceof NotFoundException ||
+      error instanceof ConflictException
+    ) {
       throw error;
     }
 
     throw new InternalServerErrorException(
-      `Error inesperado al exportar la documentación a Notion: ${error?.message || 'Error desconocido'}`,
+      `Error inesperado al exportar a Notion: ${error?.message || 'Error desconocido'}`,
     );
   }
 }

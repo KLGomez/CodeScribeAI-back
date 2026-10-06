@@ -1,4 +1,5 @@
 import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JobsService } from '../jobs/jobs.service';
@@ -14,6 +15,7 @@ export class RepositoryController {
     private jobsService: JobsService,
   ) {}
 
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('analyze')
   async analyze(
     @Body() dto: AnalyzeRepoDto,
