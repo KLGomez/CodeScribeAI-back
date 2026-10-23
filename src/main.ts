@@ -25,8 +25,14 @@ async function bootstrap() {
 
   app.use(helmet());
 
+  const frontendUrl = configService.get<string>('frontendUrl');
+  const isDev = configService.get<string>('nodeEnv') === 'development';
+  const allowedOrigins: string | string[] = isDev
+    ? Array.from(new Set([frontendUrl, 'http://localhost:8080', 'http://localhost:5173', 'http://127.0.0.1:8080', 'http://127.0.0.1:5173'].filter(Boolean)))
+    : frontendUrl;
+
   app.enableCors({
-    origin: configService.get<string>('frontendUrl'),
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });

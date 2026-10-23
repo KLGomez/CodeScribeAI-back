@@ -88,7 +88,7 @@ export class AuthController {
 
   /** Endpoint para entrar en Modo Demo con usuario efímero aislado (24h) y JWT válido */
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 3600000 } })
+  @Throttle({ default: { limit: 50, ttl: 60000 } })
   @Post('demo')
   async demoLogin() {
     const randomSuffix = Math.random().toString(36).substring(2, 8);
